@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 
 	cmttypes "github.com/cometbft/cometbft/types"
 
@@ -205,7 +205,7 @@ func (k *Keeper) ApplyTransaction(ctx sdk.Context, tx *ethtypes.Transaction) (*t
 			TxIndex:   int(txConfig.TxIndex),
 			TxHash:    txConfig.TxHash,
 		}
-		t, tErr := tracers.DefaultDirectory.New("callTracer", tCtx, nil, types.GetEthChainConfig())
+		t, tErr := tracers.DefaultDirectory.New("flatCallTracer", tCtx, nil, types.GetEthChainConfig())
 		if tErr == nil {
 			oeTracer = t
 			tracerHooks = t.Hooks
@@ -307,8 +307,8 @@ func (k *Keeper) ApplyTransaction(ctx sdk.Context, tx *ethtypes.Transaction) (*t
 	if oeTracer != nil && k.traceDb != nil {
 		traceResult, traceErr := oeTracer.GetResult()
 		if traceErr == nil {
-			traceBytes, marshalErr := json.Marshal(traceResult)
-			if marshalErr == nil {
+			traceBytes, rlpErr := rlp.EncodeToBytes(&traceResult)
+			if rlpErr == nil {
 				_ = k.WriteTxTrace(ctx, txConfig.TxHash, traceBytes)
 			}
 		}
