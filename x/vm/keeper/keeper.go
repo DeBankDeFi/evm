@@ -3,6 +3,7 @@ package keeper
 import (
 	"math/big"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -80,6 +81,8 @@ type Keeper struct {
 	// evmMempool is the custom EVM appside mempool
 	// if it is nil, the default comet mempool will be used
 	evmMempool *evmmempool.ExperimentalEVMMempool
+
+	traceDb dbm.DB
 }
 
 // NewKeeper generates new evm module keeper
@@ -95,6 +98,7 @@ func NewKeeper(
 	consensusKeeper types.ConsensusParamsKeeper,
 	erc20Keeper types.Erc20Keeper,
 	tracer string,
+	db dbm.DB,
 ) *Keeper {
 	// ensure evm module account is set
 	if addr := ak.GetModuleAddress(types.ModuleName); addr == nil {
@@ -123,6 +127,7 @@ func NewKeeper(
 		consensusKeeper:  consensusKeeper,
 		erc20Keeper:      erc20Keeper,
 		storeKeys:        keys,
+		traceDb:          db,
 	}
 }
 
@@ -400,4 +405,14 @@ func (k *Keeper) SetEvmMempool(evmMempool *evmmempool.ExperimentalEVMMempool) {
 // GetEvmMempool returns the evm mempool
 func (k Keeper) GetEvmMempool() *evmmempool.ExperimentalEVMMempool {
 	return k.evmMempool
+}
+
+// ReadTxTrace retrieves tracing result from the trace database.
+func (k *Keeper) ReadTxTrace(ctx sdk.Context, txHash common.Hash) ([]byte, error) {
+	return k.traceDb.Get(txHash.Bytes())
+}
+
+// WriteTxTrace writes tracing result to the trace database.
+func (k *Keeper) WriteTxTrace(ctx sdk.Context, txHash common.Hash, trace []byte) error {
+	return k.traceDb.Set(txHash.Bytes(), trace)
 }

@@ -450,6 +450,17 @@ func (k Keeper) TraceTx(c context.Context, req *types.QueryTraceTxRequest) (*typ
 		return nil, status.Errorf(codes.InvalidArgument, "too many predecessors, got %d: limit %d", len(req.Predecessors), maxTracePredecessors)
 	}
 
+	if req.TraceConfig != nil && req.TraceConfig.Tracer == types.TracerOe {
+		txHash := req.GetMsg().Hash()
+		resultData, err := k.ReadTxTrace(sdk.UnwrapSDKContext(c), txHash)
+		if err != nil {
+			return nil, fmt.Errorf("read tx trace error, tx: %v, err: %w", txHash, err)
+		}
+		return &types.QueryTraceTxResponse{
+			Data: resultData,
+		}, nil
+	}
+
 	// get the context of block beginning
 	requestedHeight := req.BlockNumber
 	if requestedHeight < 1 {

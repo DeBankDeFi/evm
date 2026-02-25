@@ -146,6 +146,11 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *rpctypes.TraceConfi
 		return nil, err
 	}
 
+	// For oe tracer, data is RLP-encoded; return raw bytes (serializes as hex in JSON-RPC).
+	if config != nil && config.Tracer == evmtypes.TracerOe {
+		return traceResult.Data, nil
+	}
+
 	// Response format is unknown due to custom tracer config param
 	// More information can be found here https://geth.ethereum.org/docs/dapp/tracing-filtered
 	var decodedResult interface{}

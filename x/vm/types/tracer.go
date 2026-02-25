@@ -18,6 +18,7 @@ const (
 	TracerJSON       = "json"
 	TracerStruct     = "struct"
 	TracerMarkdown   = "markdown"
+	TracerOe         = "oe"
 )
 
 // NewTracer creates a new Logger tracer to collect execution traces from an
