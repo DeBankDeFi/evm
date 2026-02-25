@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -10,6 +11,7 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/params"
 
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -193,8 +195,25 @@ func (k *Keeper) ApplyTransaction(ctx sdk.Context, tx *ethtypes.Transaction) (*t
 	// thus restricted to be used only inside `ApplyMessage`.
 	tmpCtx, commitFn := ctx.CacheContext()
 
+	// When the oe tracer is configured, create a callTracer to collect structured
+	// call traces during execution, then persist the result to the trace DB.
+	var oeTracer *tracers.Tracer
+	var tracerHooks *tracing.Hooks
+	if k.tracer == types.TracerOe {
+		tCtx := &tracers.Context{
+			BlockHash: txConfig.BlockHash,
+			TxIndex:   int(txConfig.TxIndex),
+			TxHash:    txConfig.TxHash,
+		}
+		t, tErr := tracers.DefaultDirectory.New("callTracer", tCtx, nil, types.GetEthChainConfig())
+		if tErr == nil {
+			oeTracer = t
+			tracerHooks = t.Hooks
+		}
+	}
+
 	// pass true to commit the StateDB
-	res, err := k.ApplyMessageWithConfig(tmpCtx, *msg, nil, true, cfg, txConfig, false)
+	res, err := k.ApplyMessageWithConfig(tmpCtx, *msg, tracerHooks, true, cfg, txConfig, false)
 	if err != nil {
 		// when a transaction contains multiple msg, as long as one of the msg fails
 		// all gas will be deducted. so is not msg.Gas()
@@ -283,6 +302,18 @@ func (k *Keeper) ApplyTransaction(ctx sdk.Context, tx *ethtypes.Transaction) (*t
 
 	// reset the gas meter for current cosmos transaction
 	k.ResetGasMeterAndConsumeGas(ctx, totalGasUsed)
+
+	// Persist oe trace result to trace DB
+	if oeTracer != nil && k.traceDb != nil {
+		traceResult, traceErr := oeTracer.GetResult()
+		if traceErr == nil {
+			traceBytes, marshalErr := json.Marshal(traceResult)
+			if marshalErr == nil {
+				_ = k.WriteTxTrace(ctx, txConfig.TxHash, traceBytes)
+			}
+		}
+	}
+
 	return res, nil
 }
 
