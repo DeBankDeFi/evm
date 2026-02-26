@@ -1,8 +1,6 @@
 package types
 
 import (
-	"encoding/json"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -31,7 +29,7 @@ type PreError struct {
 }
 
 type PreResult struct {
-	Trace     json.RawMessage `json:"trace"`
+	Trace     ActionTraces `json:"trace"`
 	Logs      []RpcLog        `json:"logs"`
 	StateDiff StateDiff       `json:"stateDiff"`
 	Error     PreError        `json:"error,omitempty"`
