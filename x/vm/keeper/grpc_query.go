@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
@@ -317,7 +318,19 @@ func (k Keeper) ethCallBatch(
 		msg := arg.ToMessage(cfg.BaseFee, false, false)
 		txConfig := statedb.NewEmptyTxConfig(common.BytesToHash(ctx.HeaderHash()))
 
-		res, err := k.ApplyMessageWithConfig(ctx, *msg, nil, false, cfg, txConfig, false)
+		// Create a flatCallTracer to collect structured call traces
+		tCtx := &tracers.Context{
+			BlockHash: txConfig.BlockHash,
+			TxIndex:   int(txConfig.TxIndex),
+			TxHash:    txConfig.TxHash,
+		}
+		flatTracer, tracerErr := tracers.DefaultDirectory.New("flatCallTracer", tCtx, nil, types.GetEthChainConfig())
+		var tracerHooks *tracing.Hooks
+		if tracerErr == nil && flatTracer != nil {
+			tracerHooks = flatTracer.Hooks
+		}
+
+		res, err := k.ApplyMessageWithConfig(ctx, *msg, tracerHooks, false, cfg, txConfig, false)
 		if err != nil {
 			preRes := types.PreResult{
 				Error: types.PreError{
@@ -374,6 +387,13 @@ func (k Keeper) ethCallBatch(
 					Removed:     l.Removed,
 				}
 				preRes.Logs = append(preRes.Logs, enc)
+			}
+		}
+		// Collect trace result from flatCallTracer
+		if flatTracer != nil {
+			traceResult, traceErr := flatTracer.GetResult()
+			if traceErr == nil {
+				preRes.Trace = traceResult
 			}
 		}
 		preResList = append(preResList, preRes)
