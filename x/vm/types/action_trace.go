@@ -19,16 +19,16 @@ type StateDiff map[common.Address]AccountDiff
 
 // ActionTrace represents single interaction with blockchain (OpenEthereum-style trace).
 type ActionTrace struct {
-	Subtraces           uint64   `json:"subtraces"`
-	TraceAddress        []uint32 `json:"traceAddress"`
-	TraceType           string   `json:"type"`
-	Action              TAction  `json:"action"`
-	Result              *TResult `json:"result,omitempty"`
-	Error               string   `json:"error,omitempty"`
-	BlockHash           common.Hash `json:"blockHash"`
-	BlockNumber         int64    `json:"blockNumber"`
-	TransactionHash     common.Hash `json:"transactionHash"`
-	TransactionPosition uint64   `json:"transactionPosition"`
+	Subtraces           uint64      `json:"subtraces"`
+	TraceAddress        []uint32    `json:"traceAddress"`
+	TraceType           string      `json:"type"`
+	Action              TAction     `json:"action"`
+	Result              *TResult    `json:"result,omitempty"`
+	Error               string      `json:"error,omitempty"`
+	BlockHash           common.Hash `json:"blockHash,omitempty"`
+	BlockNumber         int64       `json:"blockNumber"`
+	TransactionHash     common.Hash `json:"transactionHash,omitempty"`
+	TransactionPosition uint64      `json:"transactionPosition"`
 }
 
 // TAction represents the trace action model (Parity/OpenEthereum style).
