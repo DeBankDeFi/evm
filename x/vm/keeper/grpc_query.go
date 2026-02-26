@@ -392,9 +392,13 @@ func (k Keeper) ethCallBatch(
 		// Collect trace result from flatCallTracer
 		if flatTracer != nil {
 			traceResult, traceErr := flatTracer.GetResult()
-			if traceErr == nil {
+			if traceErr != nil {
+				k.Logger(ctx).Error("flatTracer.GetResult failed", "err", traceErr)
+			} else {
 				var traces types.ActionTraces
-				if err := json.Unmarshal(traceResult, &traces); err == nil {
+				if err := json.Unmarshal(traceResult, &traces); err != nil {
+					k.Logger(ctx).Error("unmarshal flatCallTracer result to ActionTraces failed", "err", err, "raw", string(traceResult))
+				} else {
 					preRes.Trace = traces
 				}
 			}
