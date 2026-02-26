@@ -130,9 +130,10 @@ func (a *API) TraceMany(args []CallArgs) ([]evmtypes.PreResult, error) {
 		for j := range preResList[i].Logs {
 			preResList[i].Logs[j].BlockHash = blockHash
 		}
+		zeroHash := common.Hash{}
 		for j := range preResList[i].Trace {
-			preResList[i].Trace[j].BlockHash = blockHash
-			preResList[i].Trace[j].TransactionHash = common.Hash{}
+			preResList[i].Trace[j].BlockHash = &blockHash
+			preResList[i].Trace[j].TransactionHash = &zeroHash
 		}
 	}
 	return preResList, nil

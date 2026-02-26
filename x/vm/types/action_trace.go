@@ -25,9 +25,9 @@ type ActionTrace struct {
 	Action              TAction     `json:"action"`
 	Result              *TResult    `json:"result,omitempty"`
 	Error               string      `json:"error,omitempty"`
-	BlockHash           common.Hash `json:"blockHash,omitempty"`
-	BlockNumber         int64       `json:"blockNumber"`
-	TransactionHash     common.Hash `json:"transactionHash,omitempty"`
+	BlockHash           *common.Hash `json:"blockHash,omitempty"`
+	BlockNumber         int64        `json:"blockNumber"`
+	TransactionHash     *common.Hash `json:"transactionHash,omitempty"`
 	TransactionPosition uint64      `json:"transactionPosition"`
 }
 
