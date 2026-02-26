@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	ethparams "github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -602,8 +603,12 @@ func (k Keeper) TraceTx(c context.Context, req *types.QueryTraceTxRequest) (*typ
 		if err != nil {
 			return nil, fmt.Errorf("read tx trace error, tx: %v, err: %w", txHash, err)
 		}
+		var decoded json.RawMessage
+		if err := rlp.DecodeBytes(resultData, &decoded); err != nil {
+			return nil, fmt.Errorf("rlp decode trace error, tx: %v, err: %w", txHash, err)
+		}
 		return &types.QueryTraceTxResponse{
-			Data: resultData,
+			Data: decoded,
 		}, nil
 	}
 
