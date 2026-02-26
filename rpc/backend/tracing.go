@@ -148,7 +148,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *rpctypes.TraceConfi
 
 	// For oe tracer, data is RLP-encoded; return raw bytes (serializes as hex in JSON-RPC).
 	if config != nil && config.Tracer == evmtypes.TracerOe {
-		return traceResult.Data, nil
+		return json.RawMessage(traceResult.Data), nil
 	}
 
 	// Response format is unknown due to custom tracer config param
