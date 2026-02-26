@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	ethparams "github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -394,7 +393,10 @@ func (k Keeper) ethCallBatch(
 		if flatTracer != nil {
 			traceResult, traceErr := flatTracer.GetResult()
 			if traceErr == nil {
-				preRes.Trace = traceResult
+				var traces types.ActionTraces
+				if err := json.Unmarshal(traceResult, &traces); err == nil {
+					preRes.Trace = traces
+				}
 			}
 		}
 		preResList = append(preResList, preRes)
@@ -603,12 +605,8 @@ func (k Keeper) TraceTx(c context.Context, req *types.QueryTraceTxRequest) (*typ
 		if err != nil {
 			return nil, fmt.Errorf("read tx trace error, tx: %v, err: %w", txHash, err)
 		}
-		var decoded json.RawMessage
-		if err := rlp.DecodeBytes(resultData, &decoded); err != nil {
-			return nil, fmt.Errorf("rlp decode trace error, tx: %v, err: %w", txHash, err)
-		}
 		return &types.QueryTraceTxResponse{
-			Data: decoded,
+			Data: resultData,
 		}, nil
 	}
 
