@@ -36,7 +36,7 @@ type multiCallStats struct {
 	BlockHash    common.Hash `json:"blockHash"`
 	BlockTime    int64       `json:"blockTime"`
 	Success      bool        `json:"success"`
-	CacheEnabled bool       `json:"cacheEnabled"`
+	CacheEnabled bool        `json:"cacheEnabled"`
 }
 
 const (
@@ -109,7 +109,7 @@ func handleNative(_ context.Context, b backend.EVMBackend, blockNrOrHash rpctype
 	}
 	switch method.Name {
 	case "name", "symbol":
-		res, err := method.Outputs.Pack("AURA")
+		res, err := method.Outputs.Pack("XRP")
 		if err != nil {
 			return nil, errNativeMethodOutput, err
 		}
