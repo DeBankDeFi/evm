@@ -6,7 +6,12 @@ import (
 	"io"
 	"os"
 
+	"path/filepath"
+
 	"github.com/spf13/cast"
+
+	cometdb "github.com/cometbft/cometbft-db"
+	tmos "github.com/cometbft/cometbft/libs/os"
 
 	// Force-load the tracer engines to trigger registration due to Go-Ethereum v1.10.15 changes
 	"github.com/ethereum/go-ethereum/common"
@@ -479,6 +484,12 @@ func NewExampleApp(
 	// Set up EVM keeper
 	tracer := cast.ToString(appOpts.Get(srvflags.EVMTracer))
 
+	tracesDir := filepath.Join(homePath, "data", "traces")
+	tracedb, err := cometdb.NewDB("trace", cometdb.RocksDBBackend, tracesDir)
+	if err != nil {
+		tmos.Exit(err.Error())
+	}
+
 	// NOTE: it's required to set up the EVM keeper before the ERC-20 keeper, because it is used in its instantiation.
 	app.EVMKeeper = evmkeeper.NewKeeper(
 		// TODO: check why this is not adjusted to use the runtime module methods like SDK native keepers
@@ -491,6 +502,7 @@ func NewExampleApp(
 		&app.ConsensusParamsKeeper,
 		&app.Erc20Keeper,
 		tracer,
+		tracedb,
 	)
 
 	app.Erc20Keeper = erc20keeper.NewKeeper(

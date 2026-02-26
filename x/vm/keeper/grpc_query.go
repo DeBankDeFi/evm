@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
@@ -224,6 +227,8 @@ func (k Keeper) Params(c context.Context, _ *types.QueryParamsRequest) (*types.Q
 }
 
 // EthCall implements eth_call rpc api.
+// When args.Args contains sub-calls, it executes them as a batch and returns
+// JSON-serialized []PreResult in the response Ret field.
 func (k Keeper) EthCall(c context.Context, req *types.EthCallRequest) (*types.MsgEthereumTxResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -240,6 +245,10 @@ func (k Keeper) EthCall(c context.Context, req *types.EthCallRequest) (*types.Ms
 	cfg, err := k.EVMConfig(ctx, GetProposerAddress(ctx, req.ProposerAddress))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if len(args.Args) > 0 {
+		return k.ethCallBatch(ctx, req, args, cfg)
 	}
 
 	// ApplyMessageWithConfig expect correct nonce set in msg
@@ -260,6 +269,150 @@ func (k Keeper) EthCall(c context.Context, req *types.EthCallRequest) (*types.Ms
 	}
 
 	return res, nil
+}
+
+// ethCallBatch processes a batch of sub-calls from TransactionArgs.Args,
+// returning JSON-serialized []PreResult in the response Ret field.
+func (k Keeper) ethCallBatch(
+	ctx sdk.Context,
+	req *types.EthCallRequest,
+	args types.TransactionArgs,
+	cfg *statedb.EVMConfig,
+) (*types.MsgEthereumTxResponse, error) {
+	preResList := make([]types.PreResult, 0, len(args.Args))
+	chainID := types.GetEthChainConfig().ChainID
+
+	for i, arg := range args.Args {
+		if arg.Nonce == nil {
+			preResList = append(preResList, types.PreResult{
+				Error: types.PreError{
+					Code: types.PreErrorUnKnown,
+					Msg:  "nonce is nil",
+				},
+			})
+			continue
+		}
+		if i > 0 && uint64(*arg.Nonce) <= uint64(*args.Args[i-1].Nonce) {
+			preResList = append(preResList, types.PreResult{
+				Error: types.PreError{
+					Code: types.PreErrorUnKnown,
+					Msg:  fmt.Sprintf("nonce decreases, tx index %d has nonce %d, tx index %d has nonce %d", i-1, uint64(*args.Args[i-1].Nonce), i, uint64(*arg.Nonce)),
+				},
+			})
+			continue
+		}
+
+		nonce := k.GetNonce(ctx, arg.GetFrom())
+		arg.Nonce = (*hexutil.Uint64)(&nonce)
+
+		if err := arg.CallDefaults(req.GasCap, cfg.BaseFee, chainID); err != nil {
+			preResList = append(preResList, types.PreResult{
+				Error: types.PreError{
+					Code: types.PreErrorUnKnown,
+					Msg:  err.Error(),
+				},
+			})
+			continue
+		}
+
+		msg := arg.ToMessage(cfg.BaseFee, false, false)
+		txConfig := statedb.NewEmptyTxConfig(common.BytesToHash(ctx.HeaderHash()))
+
+		// Create a flatCallTracer to collect structured call traces
+		tCtx := &tracers.Context{
+			BlockHash: txConfig.BlockHash,
+			TxIndex:   int(txConfig.TxIndex),
+			TxHash:    txConfig.TxHash,
+		}
+		flatTracer, tracerErr := tracers.DefaultDirectory.New("flatCallTracer", tCtx, nil, types.GetEthChainConfig())
+		var tracerHooks *tracing.Hooks
+		if tracerErr == nil && flatTracer != nil {
+			tracerHooks = flatTracer.Hooks
+		}
+
+		res, err := k.ApplyMessageWithConfig(ctx, *msg, tracerHooks, false, cfg, txConfig, false)
+		if err != nil {
+			preRes := types.PreResult{
+				Error: types.PreError{
+					Code: types.PreErrorUnKnown,
+					Msg:  err.Error(),
+				},
+			}
+			if res != nil {
+				preRes.GasUsed = res.GasUsed
+			}
+			preResList = append(preResList, preRes)
+			continue
+		}
+		if res != nil && res.Failed() {
+			preErr := types.PreError{
+				Code: types.PreErrorUnKnown,
+				Msg:  res.VmError,
+			}
+			if strings.HasPrefix(res.VmError, "execution reverted") {
+				preErr.Code = types.PreErrorReverted
+				reason, _ := abi.UnpackRevert(res.Revert())
+				if reason != "" {
+					preErr.Msg = reason
+				}
+			}
+			if strings.HasPrefix(res.VmError, "out of gas") {
+				preErr.Code = types.PreErrorReverted
+			}
+			if strings.HasPrefix(res.VmError, "insufficient") {
+				preErr.Code = types.PreErrorInsufficientBalane
+			}
+			preRes := types.PreResult{
+				Error:   preErr,
+				GasUsed: res.GasUsed,
+			}
+			preResList = append(preResList, preRes)
+			continue
+		}
+
+		preRes := types.PreResult{
+			Error: types.PreError{},
+		}
+		if res != nil {
+			preRes.GasUsed = res.GasUsed
+			for _, l := range res.Logs {
+				enc := types.RpcLog{
+					Address:     l.Address,
+					Topics:      l.Topics,
+					Data:        l.Data,
+					BlockNumber: hexutil.Uint64(l.BlockNumber),
+					TxHash:      l.TxHash,
+					TxIndex:     hexutil.Uint(l.TxIndex),
+					Index:       hexutil.Uint(l.Index),
+					Removed:     l.Removed,
+				}
+				preRes.Logs = append(preRes.Logs, enc)
+			}
+		}
+		// Collect trace result from flatCallTracer
+		if flatTracer != nil {
+			traceResult, traceErr := flatTracer.GetResult()
+			if traceErr != nil {
+				k.Logger(ctx).Error("flatTracer.GetResult failed", "err", traceErr)
+			} else {
+				var traces types.ActionTraces
+				if err := json.Unmarshal(traceResult, &traces); err != nil {
+					k.Logger(ctx).Error("unmarshal flatCallTracer result to ActionTraces failed", "err", err, "raw", string(traceResult))
+				} else {
+					preRes.Trace = traces
+				}
+			}
+		}
+		preResList = append(preResList, preRes)
+	}
+
+	bz, err := json.Marshal(&preResList)
+	if err != nil {
+		return nil, err
+	}
+	return &types.MsgEthereumTxResponse{
+		Ret: bz,
+	}, nil
 }
 
 // EstimateGas implements eth_estimateGas rpc api.
@@ -448,6 +601,17 @@ func (k Keeper) TraceTx(c context.Context, req *types.QueryTraceTxRequest) (*typ
 
 	if len(req.Predecessors) > maxTracePredecessors {
 		return nil, status.Errorf(codes.InvalidArgument, "too many predecessors, got %d: limit %d", len(req.Predecessors), maxTracePredecessors)
+	}
+
+	if req.TraceConfig != nil && req.TraceConfig.Tracer == types.TracerOe {
+		txHash := req.GetMsg().Hash()
+		resultData, err := k.ReadTxTrace(sdk.UnwrapSDKContext(c), txHash)
+		if err != nil {
+			return nil, fmt.Errorf("read tx trace error, tx: %v, err: %w", txHash, err)
+		}
+		return &types.QueryTraceTxResponse{
+			Data: resultData,
+		}, nil
 	}
 
 	// get the context of block beginning

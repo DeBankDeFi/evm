@@ -53,6 +53,10 @@ type TransactionArgs struct {
 	AccessList *types.AccessList `json:"accessList,omitempty"`
 	ChainID    *hexutil.Big      `json:"chainId,omitempty"`
 
+	//
+	Tracer string             `json:"tracer,omitempty"`
+	Args   []TransactionArgs   `json:"args,omitempty"`
+
 	// For BlobTxType
 	BlobFeeCap *hexutil.Big  `json:"maxFeePerBlobGas"`
 	BlobHashes []common.Hash `json:"blobVersionedHashes,omitempty"`
